@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.AI;
 using ProceduralNoiseProject;
 
-[System.Serializable]
+
 public class Cromosome 
 {
     // The size of voxel array.
@@ -15,9 +15,14 @@ public class Cromosome
     public float       [] voxels;
     float              [] mutations;
 
-    float       mutationChance = 0.2f;
-    List<Vector3> navMeshVertices = new List<Vector3>();
+    float       mutationChance      = 0.2f;
+    List<Vector3> navMeshVertices   = new List<Vector3>();
     float       longestPathDistance = 0.0f;
+
+    float       parent1Contribution;
+    float       parent2Contribution;
+    float       mutationContribution;
+
 
     public Cromosome()
     {
@@ -68,6 +73,8 @@ public class Cromosome
                 {
                     child.GetVoxels()[i + j]   = Mutation(i+j);
                 }
+
+                ++mutationContribution;
             }
             else if (combinatorial <= mutationChance + ((1-mutationChance) / 2))
             {
@@ -75,6 +82,8 @@ public class Cromosome
                 {
                     child.GetVoxels()[i + j]   = this.GetVoxels()[i + j];
                 }
+
+                ++parent1Contribution;
             }
             else 
             {
@@ -82,8 +91,16 @@ public class Cromosome
                 {
                     child.GetVoxels()[i+j]   = other.GetVoxels()[i+j];
                 }
+
+                ++parent2Contribution;
             }
         }
+
+        float total = mutationContribution + parent1Contribution + parent2Contribution;
+
+        mutationContribution /= total;
+        parent1Contribution  /= total;
+        parent2Contribution  /= total;
 
         return child;
     }
@@ -92,10 +109,14 @@ public class Cromosome
     public int      GetWidth () => width;
     public int      GetHeight() => height;
     public int      GetLength() => length;
-    public void     SetVoxels(float [] voxels) => this.voxels = voxels;
-    public float    Mutation(int i) => mutations[i];
-    public float    GetLongestPathDistance() => longestPathDistance;
-    public void     AddVertex(Vector3 vertex) => navMeshVertices.Add(vertex);
+    public float    GetMutationContribution()   => mutationContribution;
+    public float    GetParent1Contribution()    => parent1Contribution;
+    public float    GetParent2Contribution()    => parent2Contribution;
+    public int      GetNavMeshVerticesCount()   => navMeshVertices.Count;
+    public void     SetVoxels(float [] voxels)  => this.voxels = voxels;
+    public float    Mutation(int i)             => mutations[i];
+    public float    GetLongestPathDistance()    => longestPathDistance;
+    public void     AddVertex(Vector3 vertex)   => navMeshVertices.Add(vertex);
 
     public void CalculateLongestDistance(NavMeshAgent agent)
     {
@@ -105,9 +126,10 @@ public class Cromosome
             {
                 NavMeshPath path = new NavMeshPath();
 
+                agent.transform.position = navMeshVertices[i];
+                
                 if(NavMesh.CalculatePath(navMeshVertices[i], navMeshVertices[j], NavMesh.AllAreas, path))
                 {
-                    agent.transform.position = navMeshVertices[i];
                     agent.SetDestination(navMeshVertices[j]);
                     
                     if(agent.remainingDistance > longestPathDistance && agent.remainingDistance != Mathf.Infinity)

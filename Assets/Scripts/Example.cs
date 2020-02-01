@@ -21,7 +21,8 @@ using ProceduralNoiseProject;
         List<GameObject>    meshes              = new List<GameObject>();
         MarchingCubes       marching            = new MarchingCubes();
         public NavMeshAgent agent;
-
+    
+        public TMP_Dropdown    timesDropwdown;
         public TextMeshProUGUI GenerationText;
         int                    generationIndex        = 0;
         float                  bestHistorical         = float.MinValue;
@@ -81,7 +82,7 @@ using ProceduralNoiseProject;
 
         public void SetNewParents()
         {
-            Evaluate();
+            Evaluate();            
             Invoke("NextGeneration", visualizationTime);
         }
 
@@ -118,7 +119,7 @@ using ProceduralNoiseProject;
                 
                 CreateMesh(cromosomes[i], i);
             }
-
+            
             SetNewParents();
         }
 
@@ -196,5 +197,7 @@ using ProceduralNoiseProject;
             }
 
         }
+
+        public void ChangeVisualizationTime() => visualizationTime = 0.5f + (0.5f * timesDropwdown.value);        
 
     }
