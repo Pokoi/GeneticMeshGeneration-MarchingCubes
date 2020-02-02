@@ -4,16 +4,17 @@ using UnityEngine.AI;
 using TMPro;
 using System.Linq;
 using NavMeshBuilder = UnityEngine.AI.NavMeshBuilder;
-
 using ProceduralNoiseProject;
 
     //[ExecuteInEditMode]
     public class Example : MonoBehaviour
     {
+        public enum EvaluationTypes { pathDistance, navMeshVertices };
+        public EvaluationTypes evaluation;
 
         public Material m_material;
-        public const int    numberOfMeshes      = 10;
-        public float        visualizationTime   = 0.5f;
+        const int    numberOfMeshes      = 10;
+        float        visualizationTime   = 0.5f;
         public int          survivors           = 2;
         public int          [] seeds            = new int       [numberOfMeshes];
         Cromosome           [] cromosomes       = new Cromosome [numberOfMeshes];
@@ -24,9 +25,9 @@ using ProceduralNoiseProject;
     
         public TMP_Dropdown    timesDropwdown;
         public TextMeshProUGUI GenerationText;
-        int                    generationIndex        = 0;
-        float                  bestHistorical         = float.MinValue;
+        int                    generationIndex        = 0;        
         Cromosome           [] bestCromosomesInOrder  = new Cromosome [numberOfMeshes];
+        bool                   running;
         
         void Start()
         {
@@ -77,50 +78,108 @@ using ProceduralNoiseProject;
                 cromosomes[i] = cromosome;
                 CreateMesh(cromosome, i);
             }
-            SetNewParents();
+
+            Invoke("Evaluate", visualizationTime);
         }
 
-        public void SetNewParents()
+        public void Evaluate()
         {
-            Evaluate();            
-            Invoke("NextGeneration", visualizationTime);
-        }
-
-        public void NextGeneration()
-        {
-            ++generationIndex;
-            GenerationText.text = "Generation: " + generationIndex;
-
-            // Clear the meshes
-            foreach(GameObject go in meshes)
+            var navMesh = NavMesh.CalculateTriangulation();
+            Vector3[] vertices = navMesh.vertices;
+            
+            // Check what navmesh belongs to each cromosome
+            for(int i = 0; i < vertices.Length; ++i)
             {
-                Destroy(go);
-            }
+                float lowerDistance = float.MaxValue;
+                int owner           = 0;
+                
+                for(int j = 0; j < pivots.Length; ++j)
+                {
+                    float distance = Vector3.Distance(vertices[i], pivots[j].position);
+                    if(distance < lowerDistance)
+                    {
+                        lowerDistance = distance;
+                        owner = j;
+                    }
+                }
 
-            meshes.Clear();
+                cromosomes [owner].AddVertex(vertices[i]);
+            } 
 
-            // Create the childs cromosomes
+            List<Cromosome> OrderedCromosomes = new List<Cromosome>();
+
             for(int i = 0; i < cromosomes.Length; ++i)
             {
-                pivots[i].name = "--";
-                
-                // Choose the parents randomnly between the survivors
-                int index1;
-                int index2;
-                
-                index1 = UnityEngine.Random.Range(0, survivors);
-                
-                do
-                {
-                    index2 = UnityEngine.Random.Range(0, survivors);
-                }while (index2 == index1);
+                cromosomes[i].CalculateLongestDistance(agent);
+                OrderedCromosomes.Add(cromosomes[i]);
 
-                cromosomes[i] = bestCromosomesInOrder[index1].Recombine(bestCromosomesInOrder[index2]);
-                
-                CreateMesh(cromosomes[i], i);
+                switch (evaluation)
+                {
+                    case EvaluationTypes.pathDistance:
+                        
+                        pivots[i].name = cromosomes[i].GetLongestPathDistance().ToString();
+                        break;
+                    case EvaluationTypes.navMeshVertices:
+                        pivots[i].name = cromosomes[i].GetNavMeshVerticesCount().ToString();
+                        break;
+                }
             }
+
+            switch (evaluation)
+            {
+                case EvaluationTypes.pathDistance:
+                    OrderedCromosomes = OrderedCromosomes.OrderByDescending(go => go.GetLongestPathDistance()).ToList<Cromosome>();
+                    break;
+                case EvaluationTypes.navMeshVertices:
+                    OrderedCromosomes = OrderedCromosomes.OrderByDescending(go => go.GetNavMeshVerticesCount()).ToList<Cromosome>();
+                    break;
+            }
+        
+            bestCromosomesInOrder = OrderedCromosomes.ToArray();
             
-            SetNewParents();
+            NextGeneration();
+        }
+        
+        public void NextGeneration()
+        {
+            if (running)
+            { 
+                ++generationIndex;
+                GenerationText.text = "Generation: " + generationIndex;
+
+                // Clear the meshes
+                foreach(GameObject go in meshes)
+                {
+                    Destroy(go);
+                }
+
+                meshes.Clear();
+
+                // Create the childs cromosomes
+                for(int i = 0; i < cromosomes.Length; ++i)
+                {
+                    pivots[i].name = "--";
+                
+                    // Choose the parents randomnly between the survivors
+                    int index1;
+                    int index2;
+                
+                    index1 = UnityEngine.Random.Range(0, survivors);
+                
+                    do
+                    {
+                        index2 = UnityEngine.Random.Range(0, survivors);
+                    } while (index2 == index1);
+
+                    cromosomes[i] = bestCromosomesInOrder[index1].Recombine(bestCromosomesInOrder[index2]);
+                
+                    CreateMesh(cromosomes[i], i);
+                }
+            
+                if (generationIndex == 50 || generationIndex == 100 || generationIndex == 200) Pause();
+
+                Invoke("Evaluate", visualizationTime);
+            }            
         }
 
         public void CreateMesh(Cromosome cromosome, int index)
@@ -156,48 +215,12 @@ using ProceduralNoiseProject;
             meshes.Add(go);
         }
 
-        public void Evaluate()
-        {
-            var navMesh = NavMesh.CalculateTriangulation();
-            Vector3[] vertices = navMesh.vertices;
-            
-            // Check what navmesh belongs to each cromosome
-            for(int i = 0; i < vertices.Length; ++i)
-            {
-                float lowerDistance = float.MaxValue;
-                int owner           = 0;
-                
-                for(int j = 0; j < pivots.Length; ++j)
-                {
-                    float distance = Vector3.Distance(vertices[i], pivots[j].position);
-                    if(distance < lowerDistance)
-                    {
-                        lowerDistance = distance;
-                        owner = j;
-                    }
-                }
-
-                cromosomes [owner].AddVertex(vertices[i]);
-            } 
-
-            List<Cromosome> OrderedCromosomes = new List<Cromosome>();
-
-            for(int i = 0; i < cromosomes.Length; ++i)
-            {
-                cromosomes[i].CalculateLongestDistance(agent);
-                OrderedCromosomes.Add(cromosomes[i]);
-            }
-
-            OrderedCromosomes.OrderByDescending(go => go.GetLongestPathDistance());
-            bestCromosomesInOrder = OrderedCromosomes.ToArray();
-
-            if(bestCromosomesInOrder[0].GetLongestPathDistance() > bestHistorical)
-            {
-                bestHistorical = bestCromosomesInOrder[0].GetLongestPathDistance();
-            }
-
-        }
 
         public void ChangeVisualizationTime() => visualizationTime = 0.5f + (0.5f * timesDropwdown.value);        
-
+        public void Pause() => running = false;
+        public void Continue()
+        {
+            running = true;
+            NextGeneration();
+        }
     }
